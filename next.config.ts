@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // pdf-parse is a CJS package that doesn't bundle well with Turbopack
+  serverExternalPackages: ["pdf-parse"],
 };
 
 export default nextConfig;
