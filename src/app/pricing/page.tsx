@@ -40,16 +40,25 @@ export default function PricingPage() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        // Check status BEFORE parsing JSON
         if (res.status === 401) {
           router.push("/login?redirect=/pricing");
           return;
         }
-        throw new Error(err.message || "创建支付链接失败");
+
+        // Try to parse error message
+        const text = await res.text();
+        try {
+          const err = JSON.parse(text);
+          throw new Error(err.message || "创建支付链接失败");
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message !== text) throw parseErr;
+          throw new Error(`服务器错误 (${res.status})`);
+        }
       }
 
-      const { data } = await res.json();
-      // Redirect to Lemon Squeezy checkout
+      const text = await res.text();
+      const { data } = JSON.parse(text);
       window.location.href = data.url;
     } catch (e: any) {
       setError(e.message || "支付服务暂不可用，请稍后重试");
