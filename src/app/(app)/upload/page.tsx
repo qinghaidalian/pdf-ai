@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -67,7 +66,14 @@ export default function UploadPage() {
 
   async function handleUpload(f: File) {
     setUploading(true);
-    const supabase = createClient();
+
+    // Check Vercel body limit (4.5MB on free tier)
+    if (f.size > 4.5 * 1024 * 1024) {
+      toast.error("Vercel 免费版限制单次上传 4.5MB，请压缩 PDF 后重试或升级 Vercel Pro");
+      setUploading(false);
+      return;
+    }
+
     const formData = new FormData();
     formData.append("file", f);
 
@@ -77,16 +83,27 @@ export default function UploadPage() {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      toast.error(err.message);
+      const text = await res.text();
+      try {
+        const err = JSON.parse(text);
+        toast.error(err.message || "上传失败");
+      } catch {
+        toast.error(`服务器错误 (${res.status}): ${text.slice(0, 200)}`);
+      }
       setUploading(false);
       return;
     }
 
-    const { data } = await res.json();
-    setDocument(data);
-    setUploading(false);
-    setStep("select");
+    const text = await res.text();
+    try {
+      const { data } = JSON.parse(text);
+      setDocument(data);
+      setUploading(false);
+      setStep("select");
+    } catch {
+      toast.error(`解析响应失败: ${text.slice(0, 200)}`);
+      setUploading(false);
+    }
   }
 
   // --- Analyze ---
@@ -115,14 +132,25 @@ export default function UploadPage() {
     setAnalyzingStep(ANALYSIS_STEPS.length - 1);
 
     if (!res.ok) {
-      const err = await res.json();
-      toast.error(err.message);
+      const text = await res.text();
+      try {
+        const err = JSON.parse(text);
+        toast.error(err.message || "分析失败");
+      } catch {
+        toast.error(`服务器错误 (${res.status}): ${text.slice(0, 200)}`);
+      }
       setStep("select");
       return;
     }
 
-    const { data: analysis } = await res.json();
-    router.push(`/analyze/${analysis.id}`);
+    const text = await res.text();
+    try {
+      const { data: analysis } = JSON.parse(text);
+      router.push(`/analyze/${analysis.id}`);
+    } catch {
+      toast.error(`解析响应失败: ${text.slice(0, 200)}`);
+      setStep("select");
+    }
   }
 
   // --- Render ---
