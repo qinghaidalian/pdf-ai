@@ -57,22 +57,28 @@ export async function middleware(request: NextRequest) {
 
   let user = null;
 
-  // 1. Try cookie-based session first
-  const {
-    data: { user: cookieUser },
-  } = await supabase.auth.getUser();
-  user = cookieUser;
+  try {
+    // 1. Try cookie-based session first
+    const {
+      data: { user: cookieUser },
+    } = await supabase.auth.getUser();
+    user = cookieUser;
 
-  // 2. Fall back to Bearer token (for API clients)
-  if (!user) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.slice(7);
-      const {
-        data: { user: tokenUser },
-      } = await supabase.auth.getUser(token);
-      user = tokenUser;
+    // 2. Fall back to Bearer token (for API clients)
+    if (!user) {
+      const authHeader = request.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.slice(7);
+        const {
+          data: { user: tokenUser },
+        } = await supabase.auth.getUser(token);
+        user = tokenUser;
+      }
     }
+  } catch {
+    // Corrupted cookies or invalid tokens can cause low-level
+    // Headers errors. Treat as unauthenticated — user will be
+    // redirected to login where fresh cookies replace the bad ones.
   }
 
   if (!user) {
