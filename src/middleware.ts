@@ -30,8 +30,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Create response and check session
-  let supabaseResponse = NextResponse.next({ request });
+  // Create ONE response object upfront — reuse it for all setAll() calls.
+  // Do NOT create a new NextResponse.next() inside setAll: it discards cookies
+  // set by previous setAll calls, which corrupts chunked session cookies > 4KB.
+  const supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,7 +47,6 @@ export async function proxy(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
