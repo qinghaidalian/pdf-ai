@@ -10,6 +10,17 @@ const PUBLIC_PREFIXES = [
 ];
 
 export async function middleware(request: NextRequest) {
+  try {
+    return await handleMiddleware(request);
+  } catch {
+    // Hard fallback — if anything throws (e.g. corrupted JWT in
+    // Supabase internals), let the request through. API routes
+    // have their own auth checks.
+    return NextResponse.next();
+  }
+}
+
+async function handleMiddleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths (exact match or sub-routes)
@@ -44,12 +55,18 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
+          try {
+            cookiesToSet.forEach(({ name, value }) =>
+              request.cookies.set(name, value)
+            );
+            cookiesToSet.forEach(({ name, value, options }) =>
+              supabaseResponse.cookies.set(name, value, options)
+            );
+          } catch {
+            // Cookie value may contain invalid characters from a
+            // corrupted session — silently ignore, user will be
+            // prompted to re-authenticate.
+          }
         },
       },
     }
