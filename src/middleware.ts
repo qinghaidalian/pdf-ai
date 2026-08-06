@@ -7,6 +7,7 @@ const PUBLIC_PREFIXES = [
   "/api/webhooks",
   "/api/auth",
   "/templates",
+  "/api/checkout",
 ];
 
 export async function middleware(request: NextRequest) {
