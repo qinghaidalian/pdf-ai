@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { NavBar } from "@/components/layout/nav-bar";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Toggle } from "@/components/ui/toggle";
 import { CheckCircle, Loader2 } from "lucide-react";
 
 const proFeatures = [
@@ -25,9 +25,24 @@ export default function PricingPage() {
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const router = useRouter();
 
+  // Check auth state on mount
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session);
+    });
+  }, []);
+
   const handleSubscribe = async () => {
+    // Not logged in — redirect to login, then come back here
+    if (!isLoggedIn) {
+      router.push("/login?redirect=/pricing");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
@@ -40,13 +55,11 @@ export default function PricingPage() {
       });
 
       if (!res.ok) {
-        // Check status BEFORE parsing JSON
         if (res.status === 401) {
           router.push("/login?redirect=/pricing");
           return;
         }
 
-        // Try to parse error message
         const text = await res.text();
         try {
           const err = JSON.parse(text);
@@ -167,15 +180,19 @@ export default function PricingPage() {
                 variant="default"
                 className="w-full"
                 onClick={handleSubscribe}
-                disabled={loading}
+                disabled={loading || isLoggedIn === null}
               >
                 {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     正在跳转支付...
                   </>
-                ) : (
+                ) : isLoggedIn === null ? (
+                  "..."
+                ) : isLoggedIn ? (
                   "订阅 Pro"
+                ) : (
+                  "登录后订阅 Pro"
                 )}
               </Button>
             </CardContent>
