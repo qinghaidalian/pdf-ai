@@ -1,5 +1,6 @@
-import { createServerSupabase } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+import { getServerUser } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,12 +28,18 @@ interface Props {
 
 export default async function AnalyzePage({ params }: Props) {
   const { id } = await params;
-  const supabase = await createServerSupabase();
 
-  const { data: analysis } = await supabase
+  // Use admin client (service_role key) — avoids JWT cookie parsing entirely
+  const user = await getServerUser();
+  if (!user) redirect("/login?redirect=/analyze/" + id);
+
+  const admin = createAdminClient();
+
+  const { data: analysis } = await admin
     .from("analyses")
     .select("*, documents(*)")
     .eq("id", id)
+    .eq("user_id", user.id)
     .single();
 
   if (!analysis) notFound();
