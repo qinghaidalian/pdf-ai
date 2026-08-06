@@ -28,8 +28,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null);
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (error || !data.user) {
+        router.push("/login?redirect=" + encodeURIComponent(pathname));
+        return;
+      }
+      setEmail(data.user.email ?? null);
+    }).catch(() => {
+      // Corrupted token or network error — re-authenticate
+      router.push("/login?redirect=" + encodeURIComponent(pathname));
     });
   }, []);
 

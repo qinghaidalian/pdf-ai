@@ -1,4 +1,3 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Routes that don't require authentication
@@ -10,18 +9,14 @@ const PUBLIC_PREFIXES = [
   "/api/checkout",
 ];
 
-export async function middleware(request: NextRequest) {
-  try {
-    return await handleMiddleware(request);
-  } catch {
-    // Hard fallback — if anything throws (e.g. corrupted JWT in
-    // Supabase internals), let the request through. API routes
-    // have their own auth checks.
-    return NextResponse.next();
-  }
-}
-
-async function handleMiddleware(request: NextRequest) {
+/**
+ * Middleware — lightweight, synchronous, NO Supabase SDK.
+ *
+ * We intentionally do NOT parse JWT tokens or create Supabase clients here.
+ * That work is deferred to API routes (getServerUser) and page layouts.
+ * This avoids low-level Headers.append crashes caused by corrupted cookies.
+ */
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths (exact match or sub-routes)
@@ -42,64 +37,14 @@ async function handleMiddleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Create ONE response object upfront — reuse it for all setAll() calls.
-  // Do NOT create a new NextResponse.next() inside setAll: it discards cookies
-  // set by previous setAll calls, which corrupts chunked session cookies > 4KB.
-  const supabaseResponse = NextResponse.next({ request });
+  // Check for Supabase auth cookies by NAME only — never parse values.
+  // Supabase SSR stores tokens in cookies named like:
+  //   sb-<ref>-auth-token / sb-<ref>-auth-token.0 / sb-<ref>-auth-token.1 …
+  const hasAuthCookie = request.cookies
+    .getAll()
+    .some((c) => c.name.includes("auth-token"));
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value)
-            );
-            cookiesToSet.forEach(({ name, value, options }) =>
-              supabaseResponse.cookies.set(name, value, options)
-            );
-          } catch {
-            // Cookie value may contain invalid characters from a
-            // corrupted session — silently ignore, user will be
-            // prompted to re-authenticate.
-          }
-        },
-      },
-    }
-  );
-
-  let user = null;
-
-  try {
-    // 1. Try cookie-based session first
-    const {
-      data: { user: cookieUser },
-    } = await supabase.auth.getUser();
-    user = cookieUser;
-
-    // 2. Fall back to Bearer token (for API clients)
-    if (!user) {
-      const authHeader = request.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.slice(7);
-        const {
-          data: { user: tokenUser },
-        } = await supabase.auth.getUser(token);
-        user = tokenUser;
-      }
-    }
-  } catch {
-    // Corrupted cookies or invalid tokens can cause low-level
-    // Headers errors. Treat as unauthenticated — user will be
-    // redirected to login where fresh cookies replace the bad ones.
-  }
-
-  if (!user) {
+  if (!hasAuthCookie) {
     // API routes return 401 JSON
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
@@ -114,7 +59,7 @@ async function handleMiddleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return supabaseResponse;
+  return NextResponse.next();
 }
 
 export const config = {
