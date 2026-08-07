@@ -54,7 +54,6 @@ export default function PricingPage() {
 
     try {
       const plan = billing === "monthly" ? "pro_monthly" : "pro_yearly";
-      // Send email + userId directly — NO JWT, NO cookie parsing on server
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -63,6 +62,9 @@ export default function PricingPage() {
 
       if (!res.ok) {
         if (res.status === 401) {
+          // Force-clear corrupted cookies before redirecting to login
+          const supabase = createClient();
+          await supabase.auth.signOut();
           router.push("/login?redirect=/pricing");
           return;
         }
@@ -81,7 +83,11 @@ export default function PricingPage() {
       const { data } = JSON.parse(text);
       window.location.href = data.url;
     } catch (e: any) {
-      setError(e.message || "支付服务暂不可用，请稍后重试");
+      // Any error at all — force-clear cookies and redirect to login
+      // This is the self-healing path for corrupted session cookies
+      const supabase = createClient();
+      await supabase.auth.signOut().catch(() => {});
+      router.push("/login?redirect=/pricing");
     } finally {
       setLoading(false);
     }
