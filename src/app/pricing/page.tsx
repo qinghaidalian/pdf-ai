@@ -26,7 +26,8 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [userId, setUserId] = useState<string>("");
   const router = useRouter();
 
   // Check auth state on mount
@@ -34,7 +35,10 @@ export default function PricingPage() {
     const supabase = createClient();
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsLoggedIn(!!session);
-      setAccessToken(session?.access_token || null);
+      if (session) {
+        setUserEmail(session.user.email || "");
+        setUserId(session.user.id);
+      }
     });
   }, []);
 
@@ -50,15 +54,11 @@ export default function PricingPage() {
 
     try {
       const plan = billing === "monthly" ? "pro_monthly" : "pro_yearly";
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      // Pass token directly — bypasses server-side cookie parsing entirely
-      if (accessToken) {
-        headers["Authorization"] = `Bearer ${accessToken}`;
-      }
+      // Send email + userId directly — NO JWT, NO cookie parsing on server
       const res = await fetch("/api/checkout", {
         method: "POST",
-        headers,
-        body: JSON.stringify({ plan }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan, email: userEmail, userId }),
       });
 
       if (!res.ok) {

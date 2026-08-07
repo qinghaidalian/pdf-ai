@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerUser } from "@/lib/supabase/server";
 import { createCheckout, getVariantId } from "@/lib/payment/lemonsqueezy";
 
+/**
+ * POST /api/checkout
+ *
+ * Creates a Lemon Squeezy checkout session.
+ * Does NOT use Supabase cookie auth or JWT at all.
+ * Identity (email + userId) comes from the request body, obtained
+ * client-side from the browser's Supabase session.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const user = await getServerUser();
-    if (!user) {
-      return NextResponse.json(
-        { error: "UNAUTHORIZED", message: "请先登录" },
-        { status: 401 }
-      );
-    }
-
     const body = await request.json();
-    const { plan }: { plan: "pro_monthly" | "pro_yearly" } = body;
+    const {
+      plan,
+      email,
+      userId,
+    }: { plan: "pro_monthly" | "pro_yearly"; email: string; userId: string } = body;
 
     if (!plan || !["pro_monthly", "pro_yearly"].includes(plan)) {
       return NextResponse.json(
@@ -22,12 +25,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!email || !userId) {
+      return NextResponse.json(
+        { error: "UNAUTHORIZED", message: "请先登录" },
+        { status: 401 }
+      );
+    }
+
     const variantId = getVariantId(plan);
-    const checkout = await createCheckout(
-      user.id,
-      user.email || `${user.id}@user.local`,
-      variantId
-    );
+    const checkout = await createCheckout(userId, email, variantId);
 
     return NextResponse.json({
       data: { url: checkout.url, id: checkout.id },
