@@ -25,38 +25,37 @@ export async function createServerSupabase() {
 }
 
 /**
- * Get the current user, supporting both cookie-based auth (browser)
- * and Bearer token auth (API clients / testing).
+ * Get the current user via Bearer token ONLY.
+ * NO cookie-based auth fallback — avoids Headers.append crashes
+ * caused by corrupted JWT in Supabase session cookies.
+ *
+ * Client must pass the access_token from the browser's Supabase
+ * session (stored in localStorage, not the corrupted cookie).
  */
 export async function getServerUser(): Promise<{
   id: string;
   email?: string;
 } | null> {
   try {
-    const supabase = await createServerSupabase();
-
-    // 1. Try Bearer token first
     const headersList = await headers();
     const authHeader = headersList.get("authorization");
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.slice(7);
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser(token);
-      if (user && !error) return user;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return null; // No Bearer token → unauthenticated (no cookie fallback)
     }
 
-    // 2. Fall back to cookie-based session
+    const token = authHeader.slice(7);
+    // Use a fresh Supabase client to validate the token.
+    // This does NOT read cookies — getUser(jwt) calls Supabase Auth
+    // directly with the provided token.
+    const supabase = await createServerSupabase();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
-    if (user) return user;
+      error,
+    } = await supabase.auth.getUser(token);
 
+    if (user && !error) return user;
     return null;
   } catch (err) {
-    // Corrupted cookies or invalid tokens can cause low-level
-    // Headers.append errors that we can't fix — just treat as unauthenticated.
     console.error("getServerUser error (treated as unauthenticated):", err);
     return null;
   }
